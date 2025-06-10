@@ -1,0 +1,68 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongo_poc
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_poc
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9000:9000" # Native TCP interface
+    environment:
+      - CLICKHOUSE_USER=default  
+      - CLICKHOUSE_PASSWORD=clickhouse_poc_password \
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      # Optional: for custom server config.
+      # - ./clickhouse_config/config.xml:/etc/clickhouse-server/config.xml
+      # - ./clickhouse_config/users.xml:/etc/clickhouse-server/users.xml   # Mount our custom users.xml - REMOVING THIS
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user=default", "--password=clickhouse_poc_password", "-q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ulimits: # Recommended by ClickHouse docs
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  trino:
+    image: trinodb/trino:latest 
+    container_name: trino_poc
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino_config/etc:/etc/trino
+    depends_on:
+      clickhouse: 
+        condition: service_healthy
+      mongodb: 
+        condition: service_started
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset_poc
+    ports:
+      - "8088:8088" # Superset default port is 8088
+    depends_on:
+      - trino
+    environment:
+      - SUPERSET_SECRET_KEY=thisISaSECRETkeyTOchangeLATER 
+      - SUPERSET_LOAD_EXAMPLES=false # Optional: set to true to load example data/dashboards
+    volumes:
+      - superset_data:/app/superset_home # Persist Superset data (e.g., dashboards, charts, database connections)
+      # You might need to mount a superset_config.py for advanced configurations
+
+volumes:
+  mongo_data:
+  clickhouse_data:
+  superset_data: # Added volume for Superset
